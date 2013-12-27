@@ -1,5 +1,6 @@
 import akka.actor.{ActorSystem, Props, Actor}
 import java.io.File
+import java.util.concurrent.Executors
 import scala.concurrent._, duration._
 import scala.Some
 import spray.json.{JsonParser, DefaultJsonProtocol}
@@ -36,14 +37,36 @@ object Application extends App {
   }
 
   def downloadTaskList(tracks: Seq[Track]) = {
-    val tasks =
-      tracks.toStream.collect { case Track(title, true, Some(url), size) if size < 10000000 =>
-        downloadTrack(title, url)
-      }
-    val completePromise = promise[Unit]()
-    val system = ActorSystem()
-    system.actorOf(Props(new TaskDispatcher(tasks, simultaneousDownloads, completePromise)))
-    completePromise.future
+    val tasks = tracks.toIterator.collect {
+      case Track("CloZee - Raging Strings", true, Some(url), size) if size < 10000000 =>
+        downloadTrack("CloZee - Raging Strings", url)
+    }
+    executeTasks(tasks, simultaneousDownloads)
+  }
+
+  def executeTasks(tasks: Iterator[Future[Any]], simultaneous: Int) = {
+    var available = simultaneous
+    val complete = promise[Unit]()
+    val singleThreadCtx = ExecutionContext.fromExecutor(Executors.newSingleThreadExecutor)
+
+    def run(): Unit = {
+      if(available > 0)
+        if(tasks.hasNext) {
+          tasks.next().onComplete(_ => release())(singleThreadCtx)
+          available -= 1
+          run()
+        }
+        else if(available == simultaneous)
+          complete success ()
+    }
+
+    def release() = {
+      available += 1
+      run()
+    }
+
+    future { run() }(singleThreadCtx)
+    complete.future
   }
 
   def doWork() = {
@@ -60,23 +83,3 @@ case class Track(title: String, downloadable: Boolean, download_url: Option[Stri
 
 case object Done
 
-class TaskDispatcher(tasks: Stream[Future[Any]], simultaneous: Int, complete: Promise[Unit])(implicit ctx: ExecutionContext) extends Actor {
-  private val taskIterator = tasks.iterator
-  private var released = 0
-
-  1 to simultaneous foreach (_ => self ! Done)
-
-  private def pullNext() =
-    if(taskIterator.hasNext)
-      taskIterator.next().onComplete(_ => self ! Done)
-    else {
-      released += 1
-      if(released == simultaneous)
-        complete success ()
-    }
-
-  def receive = {
-    case Done =>
-      pullNext()
-  }
-}
