@@ -7,6 +7,7 @@ import spray.json.{JsonParser, DefaultJsonProtocol}
 object Application extends App {
 
   import DefaultJsonProtocol._
+  import dispatch._
 
   val simultaneousDownloads = 3
 
@@ -15,12 +16,7 @@ object Application extends App {
   implicit val trackFormat = jsonFormat4(Track)
   implicit val arFormat = arrayFormat[Track]
 
-  import dispatch._
-
-  val singleThreadExecutor = Executors.newSingleThreadExecutor
   val threadPoolExecutor = Executors.newCachedThreadPool()
-
-  val singleThreadCtx = ExecutionContext fromExecutor singleThreadExecutor
   implicit val ctx = ExecutionContext fromExecutor threadPoolExecutor
 
   def getFavorites = Http {
@@ -46,31 +42,7 @@ object Application extends App {
       case Track(title, true, Some(url), _) =>
         downloadTrack(title, url)
     }
-    executeTasks(tasks, simultaneousDownloads)
-  }
-
-  def executeTasks(tasks: Iterator[Future[Any]], simultaneous: Int) = {
-    var available = simultaneous
-    val complete = promise[Unit]()
-
-    def run(): Unit = {
-      if(available > 0)
-        if(tasks.hasNext) {
-          tasks.next().onComplete(_ => release())(singleThreadCtx)
-          available -= 1
-          run()
-        }
-        else if(available == simultaneous)
-          complete success ()
-    }
-
-    def release() = {
-      available += 1
-      run()
-    }
-
-    future { run() }(singleThreadCtx)
-    complete.future
+    TaskDispatcher(tasks, simultaneousDownloads)
   }
 
   def doWork() = {
@@ -85,11 +57,42 @@ object Application extends App {
 
   Await.ready (doWork(), Duration.Inf)
 
-  // Release resources
-  singleThreadExecutor.shutdown()
   threadPoolExecutor.shutdown()
 
   println("Download finished")
 }
 
 case class Track(title: String, downloadable: Boolean, download_url: Option[String], original_content_size: Int)
+
+/** *
+  * Performs no more than N tasks simultaneously
+  */
+object TaskDispatcher {
+  def apply(tasks: Iterator[Future[Any]], simultaneous: Int) = {
+    var available = simultaneous
+    val complete = promise[Unit]()
+    val singleThreadExecutor = Executors.newSingleThreadExecutor
+    implicit val singleThreadCtx = ExecutionContext fromExecutor singleThreadExecutor
+
+    def run(): Unit = {
+      if(available > 0)
+        if(tasks.hasNext) {
+          tasks.next().onComplete(_ => release())
+          available -= 1
+          run()
+        }
+        else if(available == simultaneous) {
+          complete success ()
+          singleThreadExecutor.shutdown()
+        }
+    }
+
+    def release() = {
+      available += 1
+      run()
+    }
+
+    future { run() }
+    complete.future
+  }
+}
