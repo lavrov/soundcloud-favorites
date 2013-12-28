@@ -36,8 +36,8 @@ object Application extends App {
 
   def downloadTaskList(tracks: Seq[Track]) = {
     val tasks = tracks.toIterator.collect {
-      case Track(title, Some(url)) =>
-        downloadTrack(title, url)
+      case Track(title, downloadUrl, Some(streamUrl)) =>
+        downloadTrack(title, downloadUrl getOrElse streamUrl)
     }
     TaskDispatcher(tasks, simultaneousDownloads)
   }
@@ -59,7 +59,7 @@ object Application extends App {
   println("Download finished")
 }
 
-case class Track(title: String, stream_url: Option[String])
+case class Track(title: String, download_url: Option[String], stream_url: Option[String])
 
 /** *
   * Performs no more than N tasks simultaneously
