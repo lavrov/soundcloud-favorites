@@ -38,8 +38,8 @@ object Application extends App {
 
   def downloadTaskList(tracks: Seq[Track]) = {
     val tasks = tracks.toIterator.collect {
-      case Track("CloZee - Raging Strings", true, Some(url), size) if size < 10000000 =>
-        downloadTrack("CloZee - Raging Strings", url)
+      case Track(title, true, Some(url), _) =>
+        downloadTrack(title, url)
     }
     executeTasks(tasks, simultaneousDownloads)
   }
@@ -80,6 +80,3 @@ object Application extends App {
 }
 
 case class Track(title: String, downloadable: Boolean, download_url: Option[String], original_content_size: Int)
-
-case object Done
-
