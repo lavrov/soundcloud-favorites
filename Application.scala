@@ -1,4 +1,3 @@
-import akka.actor.{ActorSystem, Props, Actor}
 import java.io.File
 import java.util.concurrent.Executors
 import scala.concurrent._, duration._
@@ -16,7 +15,13 @@ object Application extends App {
   implicit val trackFormat = jsonFormat4(Track)
   implicit val arFormat = arrayFormat[Track]
 
-  import dispatch._, Defaults._
+  import dispatch._
+
+  val singleThreadExecutor = Executors.newSingleThreadExecutor
+  val threadPoolExecutor = Executors.newCachedThreadPool()
+
+  val singleThreadCtx = ExecutionContext fromExecutor singleThreadExecutor
+  implicit val ctx = ExecutionContext fromExecutor threadPoolExecutor
 
   def getFavorites = Http {
     url(s"http://api.soundcloud.com/users/lavrovvitaliy/favorites.json?client_id=$clientId") OK
@@ -47,7 +52,6 @@ object Application extends App {
   def executeTasks(tasks: Iterator[Future[Any]], simultaneous: Int) = {
     var available = simultaneous
     val complete = promise[Unit]()
-    val singleThreadCtx = ExecutionContext.fromExecutor(Executors.newSingleThreadExecutor)
 
     def run(): Unit = {
       if(available > 0)
@@ -70,13 +74,22 @@ object Application extends App {
   }
 
   def doWork() = {
+    val dir = new File("downloads")
+    if(! dir.exists) dir.mkdir()
 
     for {
       favorites <- getFavorites
-      result <- downloadTaskList(favorites)
+      result    <- downloadTaskList(favorites)
     } yield result
   }
+
   Await.ready (doWork(), Duration.Inf)
+
+  // Release resources
+  singleThreadExecutor.shutdown()
+  threadPoolExecutor.shutdown()
+
+  println("Download finished")
 }
 
 case class Track(title: String, downloadable: Boolean, download_url: Option[String], original_content_size: Int)
