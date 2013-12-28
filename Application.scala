@@ -1,20 +1,17 @@
 import java.io.File
 import java.util.concurrent.Executors
 import scala.concurrent._, duration._
-import scala.Some
-import spray.json.{JsonParser, DefaultJsonProtocol}
+import play.api.libs.json._
 
 object Application extends App {
 
-  import DefaultJsonProtocol._
   import dispatch._
 
-  val simultaneousDownloads = 3
+  val simultaneousDownloads = args.lift(1).map(_.toInt) getOrElse 3
 
   lazy val clientId = args.headOption getOrElse sys.error("Client id isn't set")
 
-  implicit val trackFormat = jsonFormat4(Track)
-  implicit val arFormat = arrayFormat[Track]
+  implicit val trackFormat = Json.reads[Track]
 
   val threadPoolExecutor = Executors.newCachedThreadPool()
   implicit val ctx = ExecutionContext fromExecutor threadPoolExecutor
@@ -25,8 +22,8 @@ object Application extends App {
   } map parseResponse
 
   def parseResponse(body: String) = {
-    val tracksJson = JsonParser(body)
-    tracksJson.convertTo[Array[Track]]
+    val jsValue = Json parse body
+    Json.fromJson[List[Track]](jsValue).get
   }
 
   def downloadTrack(title: String, downloadUrl: String) = {
@@ -39,7 +36,7 @@ object Application extends App {
 
   def downloadTaskList(tracks: Seq[Track]) = {
     val tasks = tracks.toIterator.collect {
-      case Track(title, true, Some(url), _) =>
+      case Track(title, Some(url)) =>
         downloadTrack(title, url)
     }
     TaskDispatcher(tasks, simultaneousDownloads)
@@ -62,7 +59,7 @@ object Application extends App {
   println("Download finished")
 }
 
-case class Track(title: String, downloadable: Boolean, download_url: Option[String], original_content_size: Int)
+case class Track(title: String, stream_url: Option[String])
 
 /** *
   * Performs no more than N tasks simultaneously
