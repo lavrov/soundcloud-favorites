@@ -1,7 +1,7 @@
-scalaVersion := "2.10.3"
+scalaVersion := "2.11.4"
 
-resolvers += "spray repo" at "http://repo.spray.io"
-
-libraryDependencies += "net.databinder.dispatch" %% "dispatch-core" % "0.11.0"
-
-libraryDependencies +=  "com.typesafe.play" %% "play-json" % "2.2.1"
+libraryDependencies ++= Seq(
+  "com.typesafe.akka" %% "akka-stream-experimental" % "1.0-M2",
+  "com.typesafe.play" %% "play-json" % "2.3.6",
+  "com.typesafe.play" %% "play-ws" % "2.3.6"
+)
