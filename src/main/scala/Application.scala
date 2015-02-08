@@ -19,7 +19,7 @@ object Application {
 
     val username = sys.props.get("username")
 
-    Await.result(new Favorites(clientId, username getOrElse "lavrovvitaliy").doWork(), Duration.Inf)
+    Await.result(new Favorites(clientId, username getOrElse "lavrovvitaliy").download(), Duration.Inf)
 
     system.shutdown()
     system.awaitTermination()
